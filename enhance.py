@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""                          _              _                           
-  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___  
- | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \ 
- | | | |  __/ |_| | | | (_| | | |  __/ | | | | | | (_| | | | | (_|  __/ 
- |_| |_|\___|\__,_|_|  \__,_|_|  \___|_| |_|_| |_|\__,_|_| |_|\___\___| 
+r"""                          _              _
+  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___
+ | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \
+ | | | |  __/ |_| | | | (_| | | |  __/ | | | | | | (_| | | | | (_|  __/
+ |_| |_|\___|\__,_|_|  \__,_|_|  \___|_| |_|_| |_|\__,_|_| |_|\___\___|
 
 """
 #
@@ -23,6 +23,7 @@ import bz2
 import glob
 import math
 import time
+import tqdm
 import pickle
 import random
 import argparse
@@ -379,7 +380,7 @@ class Model(object):
         params = {k: [cast(p) for p in l.get_params()] for (k, l) in self.list_generator_layers()}
         config = {k: getattr(args, k) for k in ['generator_blocks', 'generator_residual', 'generator_filters'] + \
                                                ['generator_upscale', 'generator_downscale']}
-        
+
         pickle.dump((config, params), bz2.open(self.get_filename(absolute=True), 'wb'))
         print('  - Saved model as `{}` after training.'.format(self.get_filename()))
 
@@ -546,7 +547,7 @@ class NeuralEnhancer(object):
         map_Hb = scipy.interpolate.interp1d(Hpb, X, bounds_error=False, fill_value='extrapolate')
         return map_Hb(inv_Ha(A).clip(0.0, 255.0))
 
-    def process(self, original):
+    def process(self, original, desc):
         # Snap the image to a shape that's compatible with the generator (2x, 4x)
         s = 2 ** max(args.generator_upscale, args.generator_downscale)
         by, bx = original.shape[0] % s, original.shape[1] % s
@@ -558,11 +559,12 @@ class NeuralEnhancer(object):
         output = np.zeros((original.shape[0] * z, original.shape[1] * z, 3), dtype=np.float32)
 
         # Iterate through the tile coordinates and pass them through the network.
-        for y, x in itertools.product(range(0, original.shape[0], s), range(0, original.shape[1], s)):
+        ys = range(0, original.shape[0], s)
+        xs = range(0, original.shape[1], s)
+        for y, x in tqdm.tqdm(itertools.product(ys, xs), total=len(ys) * len(xs), desc=desc):
             img = np.transpose(image[y:y+p*2+s,x:x+p*2+s,:] / 255.0 - 0.5, (2, 0, 1))[np.newaxis].astype(np.float32)
             *_, repro = self.model.predict(img)
             output[y*z:(y+s)*z,x*z:(x+s)*z,:] = np.transpose(repro[0] + 0.5, (1, 2, 0))[p*z:-p*z,p*z:-p*z,:]
-            print('.', end='', flush=True)
         output = output.clip(0.0, 1.0) * 255.0
 
         # Match color histograms if the user specified this option.
@@ -581,9 +583,8 @@ if __name__ == "__main__":
     else:
         enhancer = NeuralEnhancer(loader=False)
         for filename in args.files:
-            print(filename, end=' ')
             img = imageio.imread(filename, as_gray=False, pilmode='RGB')
-            out = enhancer.process(img)
+            out = enhancer.process(img, desc=filename)
             out.save(os.path.splitext(filename)[0]+'_ne%ix.png' % args.zoom)
             print(flush=True)
         print(ansi.ENDC)

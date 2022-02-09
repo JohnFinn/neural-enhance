@@ -29,6 +29,8 @@ import argparse
 import itertools
 import threading
 import collections
+import PIL
+import imageio
 
 
 # Configure all options first so we can later custom-load other libraries (Theano) based on device specified by user.
@@ -467,7 +469,7 @@ class NeuralEnhancer(object):
         print('{}'.format(ansi.ENDC))
 
     def imsave(self, fn, img):
-        scipy.misc.toimage(np.transpose(img + 0.5, (1, 2, 0)).clip(0.0, 1.0) * 255.0, cmin=0, cmax=255).save(fn)
+        PIL.Image.fromarray(np.transpose(img + 0.5, (1, 2, 0)).clip(0.0, 1.0) * 255.0).save(fn)
 
     def show_progress(self, orign, scald, repro):
         os.makedirs('valid', exist_ok=True)
@@ -568,7 +570,7 @@ class NeuralEnhancer(object):
             for i in range(3):
                 output[:,:,i] = self.match_histograms(output[:,:,i], original[:,:,i])
 
-        return scipy.misc.toimage(output, cmin=0, cmax=255)
+        return PIL.Image.fromarray((output).astype('uint8'), mode='RGB')
 
 
 if __name__ == "__main__":
@@ -580,7 +582,7 @@ if __name__ == "__main__":
         enhancer = NeuralEnhancer(loader=False)
         for filename in args.files:
             print(filename, end=' ')
-            img = scipy.ndimage.imread(filename, mode='RGB')
+            img = imageio.imread(filename, as_gray=False, pilmode='RGB')
             out = enhancer.process(img)
             out.save(os.path.splitext(filename)[0]+'_ne%ix.png' % args.zoom)
             print(flush=True)
